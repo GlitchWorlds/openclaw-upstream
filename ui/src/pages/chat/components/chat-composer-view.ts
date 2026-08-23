@@ -240,8 +240,8 @@ export function renderChatComposerView(context: ChatComposerViewContext) {
         ${renderChatGoal(state, activeSession.goal, {
           canAct: props.connected && canCompose,
           onGoalCommand: props.onGoalCommand,
-          onGoalEdit: (goal) => {
-            commitComposerDraft(props, `/goal edit ${goal.objective}`);
+          onGoalEdit: (updatedGoal) => {
+            commitComposerDraft(props, `/goal edit ${updatedGoal.objective}`);
             requestUpdate();
             queueMicrotask(() => state.composerTextarea?.focus({ preventScroll: true }));
           },

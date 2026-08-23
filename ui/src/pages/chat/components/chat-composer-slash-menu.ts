@@ -110,7 +110,10 @@ export function updateSlashMenu(
       requestSlashCommandRefresh(value, props, requestUpdate, getCurrentValue);
     }
     const items = getSlashCommandCompletions(match[1] ?? "", { showAll: true });
-    state.slashMenuItems = items;
+    state.slashMenuItems = [
+      ...items.filter((command) => command.source !== "skill"),
+      ...items.filter((command) => command.source === "skill"),
+    ];
     state.slashMenuOpen = items.length > 0;
     state.slashMenuIndex = 0;
     state.slashMenuMode = "command";
@@ -312,7 +315,13 @@ function renderSlashCommandOption(params: {
         requestUpdate();
       }}
     >
-      <span class="slash-menu-icon">${cmd.icon ? renderSlashIcon(cmd.icon) : icons.terminal}</span>
+      <span class="slash-menu-icon"
+        >${cmd.source === "skill"
+          ? icons.pencilSparkles
+          : cmd.icon
+            ? renderSlashIcon(cmd.icon)
+            : icons.terminal}</span
+      >
       <span class="slash-menu-copy">
         <span class="slash-menu-name"
           >/${renderMatchedName(cmd.name, query)}${cmd.args

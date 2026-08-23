@@ -3526,6 +3526,36 @@ describe("chat slash menu accessibility", () => {
     expect(options.at(-1)?.querySelector("mark")?.textContent).toBe("sta");
   });
 
+  it("uses the grouped slash menu order for keyboard selection", () => {
+    replaceSlashCommands([
+      {
+        key: "status-report",
+        name: "status-report",
+        description: "Prepare a status report.",
+        source: "skill",
+        skillModelVisible: true,
+      },
+      {
+        key: "status-check",
+        name: "status-check",
+        description: "Check current status.",
+        source: "plugin",
+      },
+    ]);
+    const harness = createSlashRerenderHarness();
+    let container = harness.inputAndRender(harness.container, "/status");
+
+    const optionNames = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(".slash-menu [role='option']")).map(
+        (option) => option.querySelector(".slash-menu-name")?.textContent?.trim(),
+      );
+    expect(optionNames()).toEqual(["/status-check", "/status-report"]);
+
+    keydownComposer(container, "Enter");
+    container = harness.renderCurrent();
+    expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("/status-check ");
+  });
+
   it("dismisses invocation sheets on an outside pointer press", () => {
     const { container } = createReactiveDraftHarness();
     document.body.append(container);
@@ -3545,23 +3575,29 @@ describe("chat slash menu accessibility", () => {
       description: "Draft polished prose.",
     });
     const { container } = createReactiveDraftHarness();
-    inputDraftAtEnd(container, "Use $prose_writer next");
+    inputDraftAtEnd(container, "Use $prose_writer: next");
 
     const textarea = getComposerTextarea(container);
     const token = container.querySelector(".agent-chat__skill-token");
     expect(token?.textContent).toContain("Prose Writer");
+    expect(token?.getAttribute("data-raw")).toBe("$prose_writer");
+    expect(
+      container
+        .querySelector(".agent-chat__composer-draft-overlay")
+        ?.textContent?.includes("Use $prose_writer: next"),
+    ).toBe(true);
     expect(textarea.classList.contains("agent-chat__composer-textarea--rich")).toBe(true);
 
     textarea.setSelectionRange(8, 8);
     textarea.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
     expect(textarea.selectionStart).toBe(4);
 
-    textarea.setSelectionRange("Use $prose_writer ".length, "Use $prose_writer ".length);
+    textarea.setSelectionRange("Use $prose_writer".length, "Use $prose_writer".length);
     keydownComposer(container, "ArrowLeft");
     expect(textarea.selectionStart).toBe(4);
     textarea.setSelectionRange(4, 4);
     keydownComposer(container, "ArrowRight");
-    expect(textarea.selectionStart).toBe("Use $prose_writer ".length);
+    expect(textarea.selectionStart).toBe("Use $prose_writer".length);
   });
 
   it("fills a selected $ skill without submitting the surrounding prompt", async () => {

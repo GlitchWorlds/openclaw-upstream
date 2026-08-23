@@ -27,7 +27,12 @@ type SkillMentionTarget = {
   query: string;
 };
 
-type SkillDraftPart = { kind: "text"; value: string } | { kind: "skill"; command: SlashCommandDef };
+type SkillDraftToken = {
+  command: SlashCommandDef;
+  end: number;
+  raw: string;
+  start: number;
+};
 
 type SkillDraftRange = { start: number; end: number; navigationEnd: number };
 
@@ -191,13 +196,13 @@ export function getActiveSkillMenuOptionLabel(state: ChatComposerState): string 
   return command ? `${getSkillDisplayName(command)} ${getSlashCommandDescription(command)}` : "";
 }
 
-function parseSkillDraftParts(value: string): SkillDraftPart[] {
-  const parts: SkillDraftPart[] = [];
+function parseSkillDraftTokens(value: string): SkillDraftToken[] {
+  const tokens: SkillDraftToken[] = [];
   const referencePattern = /\$([-a-zA-Z0-9_:]+)/gu;
-  let textStart = 0;
   for (const match of value.matchAll(referencePattern)) {
     const start = match.index;
-    const name = match[1] ?? "";
+    const matchedName = match[1] ?? "";
+    const name = matchedName.replace(/:+$/u, "");
     if (start === undefined || isEscapedReference(value, start)) {
       continue;
     }
@@ -205,28 +210,58 @@ function parseSkillDraftParts(value: string): SkillDraftPart[] {
     if (!command) {
       continue;
     }
-    if (start > textStart) {
-      parts.push({ kind: "text", value: value.slice(textStart, start) });
+    const raw = `$${name}`;
+    tokens.push({ command, end: start + raw.length, raw, start });
+  }
+  return tokens;
+}
+
+function syncSkillDraftOverlayTokens(element: Element | undefined, value: string): void {
+  if (!(element instanceof HTMLElement) || typeof requestAnimationFrame !== "function") {
+    return;
+  }
+  requestAnimationFrame(() => {
+    if (!element.isConnected) {
+      return;
     }
-    parts.push({ kind: "skill", command });
-    textStart = start + match[0].length;
-  }
-  if (textStart < value.length) {
-    parts.push({ kind: "text", value: value.slice(textStart) });
-  }
-  return parts;
+    const text = Array.from(element.childNodes).find(
+      (node): node is Text => node instanceof Text && node.data === value,
+    );
+    if (!text) {
+      return;
+    }
+    const overlayRect = element.getBoundingClientRect();
+    for (const token of element.querySelectorAll<HTMLElement>(".agent-chat__skill-token")) {
+      const start = Number(token.dataset.start);
+      const end = Number(token.dataset.end);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start) {
+        continue;
+      }
+      const range = document.createRange();
+      range.setStart(text, start);
+      range.setEnd(text, end);
+      if (typeof range.getBoundingClientRect !== "function") {
+        continue;
+      }
+      const rect = range.getBoundingClientRect();
+      token.style.insetInlineStart = `${rect.left - overlayRect.left + element.scrollLeft}px`;
+      token.style.top = `${rect.top - overlayRect.top + element.scrollTop}px`;
+      token.style.width = `${rect.width}px`;
+      token.style.height = `${rect.height}px`;
+    }
+  });
 }
 
 function skillDraftRanges(value: string): SkillDraftRange[] {
   const ranges: SkillDraftRange[] = [];
   for (const match of value.matchAll(/\$([-a-zA-Z0-9_:]+)/gu)) {
     const start = match.index;
-    const name = match[1] ?? "";
+    const name = (match[1] ?? "").replace(/:+$/u, "");
     if (start === undefined || isEscapedReference(value, start)) {
       continue;
     }
     if (getSkillCommandCompletions(name).some((candidate) => candidate.name === name)) {
-      const end = start + match[0].length;
+      const end = start + name.length + 1;
       ranges.push({ start, end, navigationEnd: /\s/u.test(value[end] ?? "") ? end + 1 : end });
     }
   }
@@ -294,22 +329,29 @@ export function handleSkillTokenKeydown(event: KeyboardEvent): boolean {
 }
 
 export function renderSkillDraftOverlay(value: string): TemplateResult | typeof nothing {
-  const parts = parseSkillDraftParts(value);
-  if (!parts.some((part) => part.kind === "skill")) {
+  const tokens = parseSkillDraftTokens(value);
+  if (tokens.length === 0) {
     return nothing;
   }
-  return html`<div class="agent-chat__composer-draft-overlay" aria-hidden="true">
-    ${parts.map((part) =>
-      part.kind === "text"
-        ? part.value
-        : html`<span class="agent-chat__skill-token"
-            ><span class="agent-chat__skill-token-icon">${icons.pencilSparkles}</span
-            ><span class="agent-chat__skill-token-marker">$</span>${getSkillDisplayName(
-              part.command,
-            )}</span
-          >`,
-    )}
-  </div>`;
+  // Template whitespace changes the mirrored draft's line breaks. Keep the raw text
+  // adjacent to the container and token markup so only user input drives layout.
+  // oxfmt-ignore
+  return html`<div
+    class="agent-chat__composer-draft-overlay"
+    aria-hidden="true"
+    ${ref((element) => syncSkillDraftOverlayTokens(element, value))}
+  >${value}${tokens.map(
+      (token) => html`<span
+        class="agent-chat__skill-token"
+        data-start=${token.start}
+        data-end=${token.end}
+        data-raw=${token.raw}
+        ><span class="agent-chat__skill-token-icon">${icons.pencilSparkles}</span
+        ><span class="agent-chat__skill-token-marker">$</span>${getSkillDisplayName(
+          token.command,
+        )}</span
+      >`,
+    )}</div>`;
 }
 
 export function selectSkillMention(

@@ -3201,12 +3201,16 @@ button.chat-pr__diff {
 }
 
 .agent-chat__skill-token {
-  position: relative;
+  position: absolute;
+  width: 100%;
   display: inline-flex;
   align-items: baseline;
-  gap: 0.34em;
-  margin-inline-start: 0.14em;
+  gap: 0.22em;
+  overflow: hidden;
+  background: var(--chat-composer-surface);
   color: var(--info);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-chat__skill-token-icon {
